@@ -24,9 +24,9 @@ exports.handleIncomingCall = async (req, res) => {
       callerid = msgData.call_from || msgData.extension;
       calledNumber = msgData.call_to || msgData.called_number;
     } else {
-      callid = req.body.callid;
-      callerid = req.body.callerid;
-      calledNumber = req.body.called_number || req.body.call_to;
+      callid = req.body.callid || req.body.call_id;
+      callerid = req.body.callerid || req.body.from;
+      calledNumber = req.body.called_number || req.body.call_to || req.body.to;
     }
 
     console.log(`📞 Incoming call: ${callerid} → ${calledNumber} (Call ID: ${callid})`);
