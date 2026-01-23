@@ -14,21 +14,30 @@ class YeastarWebSocketService {
   start(port = 4000) {
     this.wss = new WebSocket.Server({ 
       port,
+      host: '0.0.0.0', // Bind to all interfaces, not just localhost
       perMessageDeflate: false,
       maxPayload: 1024 * 1024 * 10 // 10MB max payload
     });
     
-    logger.websocket(`🎧 Voice WebSocket Server running on ws://localhost:${port}`);
-    logger.websocket(`🔧 WebSocket Server Configuration: Port=${port}, MaxPayload=10MB`);
+    logger.websocket(`🎧 Voice WebSocket Server running on ws://0.0.0.0:${port}`);
+    logger.websocket(`🔧 WebSocket Server Configuration: Port=${port}, Host=0.0.0.0, MaxPayload=10MB`);
+    logger.websocket(`🌐 External access: ws://YOUR-EC2-IP:${port}`);
     
     this.wss.on('connection', (ws, req) => {
       const clientIP = req.socket.remoteAddress;
+      const userAgent = req.headers['user-agent'] || 'Unknown';
       logger.websocket(`🔗 NEW WebSocket Connection from IP: ${clientIP}`);
+      logger.websocket(`🔗 User-Agent: ${userAgent}`);
       logger.websocket(`🔗 Connection Headers: ${JSON.stringify(req.headers)}`);
+      
+      // Yeastar-specific connection handling
+      if (userAgent.toLowerCase().includes('yeastar') || clientIP.includes('yeastar')) {
+        logger.websocket(`🎯 YEASTAR CONNECTION DETECTED!`);
+      }
       
       ws.on('message', async (data) => {
         try {
-          logger.websocket(`📡 Raw WebSocket Data Received (${data.length} bytes)`);
+          logger.websocket(`📡 Raw WebSocket Data Received (${data.length} bytes) from ${clientIP}`);
           logger.websocket(`📡 Data Preview: ${data.toString().substring(0, 200)}...`);
           await this.handleMessage(ws, data);
         } catch (error) {
@@ -38,12 +47,12 @@ class YeastarWebSocketService {
       });
 
       ws.on('close', (code, reason) => {
-        logger.websocket(`🔌 WebSocket disconnected - Code: ${code}, Reason: ${reason}`);
+        logger.websocket(`🔌 WebSocket disconnected from ${clientIP} - Code: ${code}, Reason: ${reason}`);
         this.cleanupConnection(ws);
       });
 
       ws.on('error', (error) => {
-        logger.error('WebSocket connection error:', error);
+        logger.error(`WebSocket connection error from ${clientIP}:`, error);
       });
       
       // Send connection confirmation
@@ -51,11 +60,12 @@ class YeastarWebSocketService {
         type: 'connection_ready',
         message: 'WebSocket connected successfully',
         timestamp: new Date().toISOString(),
-        server: 'Yeastar AI Voice Assistant'
+        server: 'Yeastar AI Voice Assistant',
+        clientIP: clientIP
       };
       
       ws.send(JSON.stringify(confirmationMsg));
-      logger.websocket(`✅ Connection confirmation sent: ${JSON.stringify(confirmationMsg)}`);
+      logger.websocket(`✅ Connection confirmation sent to ${clientIP}: ${JSON.stringify(confirmationMsg)}`);
     });
 
     this.wss.on('error', (error) => {
@@ -70,33 +80,71 @@ class YeastarWebSocketService {
 
   async handleMessage(ws, data) {
     try {
-      // Parse Yeastar message
-      const message = JSON.parse(data.toString());
-      logger.websocket(`📨 Message Type: ${message.type}`);
-      logger.websocket(`📨 Full Message: ${JSON.stringify(message)}`);
+      // Log raw data first
+      logger.websocket(`📨 Raw Data Received: ${data.toString()}`);
       
+      // Try to parse as JSON
+      let message;
+      try {
+        message = JSON.parse(data.toString());
+        logger.websocket(`📨 Parsed JSON Message: ${JSON.stringify(message)}`);
+      } catch (parseError) {
+        // If not JSON, treat as plain text
+        logger.websocket(`📨 Non-JSON Message: ${data.toString()}`);
+        
+        // Send acknowledgment for any message
+        ws.send(JSON.stringify({
+          type: 'ack',
+          message: 'Message received',
+          timestamp: new Date().toISOString()
+        }));
+        return;
+      }
+      
+      // Handle different message types
       switch (message.type) {
         case 'call_start':
+        case 'start_call':
+        case 'call_begin':
           await this.handleCallStart(ws, message);
           break;
+          
         case 'audio_data':
-          logger.websocket(`🎵 Audio Data Received - Size: ${message.audio ? message.audio.length : 0} chars`);
+        case 'audio':
+        case 'voice_data':
+          logger.websocket(`🎵 Audio Data - Size: ${message.audio ? message.audio.length : 0} chars`);
           await this.handleAudioData(ws, message);
           break;
+          
         case 'call_end':
+        case 'end_call':
+        case 'call_hangup':
           await this.handleCallEnd(ws, message);
           break;
+          
         case 'ping':
           logger.websocket('🏓 Ping received, sending pong');
-          ws.send(JSON.stringify({ type: 'pong', timestamp: new Date().toISOString() }));
+          ws.send(JSON.stringify({ 
+            type: 'pong', 
+            timestamp: new Date().toISOString() 
+          }));
           break;
+          
         default:
           logger.websocket(`❓ Unknown message type: ${message.type}`);
+          logger.websocket(`❓ Full unknown message: ${JSON.stringify(message)}`);
+          
+          // Send acknowledgment for unknown messages
+          ws.send(JSON.stringify({
+            type: 'ack',
+            message: `Received unknown message type: ${message.type}`,
+            timestamp: new Date().toISOString()
+          }));
           break;
       }
-    } catch (parseError) {
-      logger.error('Failed to parse WebSocket message:', parseError);
-      logger.websocket(`📨 Raw data that failed to parse: ${data.toString()}`);
+    } catch (error) {
+      logger.error('Failed to handle WebSocket message:', error);
+      logger.websocket(`📨 Error processing data: ${data.toString()}`);
     }
   }
 

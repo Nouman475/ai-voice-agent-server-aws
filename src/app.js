@@ -5,6 +5,7 @@ const yeastarRoutes = require("./routes/yeastar.routes");
 const errorMiddleware = require("./middlewares/error.middleware");
 const websocketService = require('./services/websocket.service');
 const logger = require('./utils/logger');
+const http = require('http');
 
 const app = express();
 
@@ -21,7 +22,7 @@ app.get("/", (req, res) => {
     endpoints: {
       call: "/api/call",
       yeastar: "/api/yeastar",
-      websocket: `ws://localhost:${process.env.WEBSOCKET_PORT || 4001}`,
+      websocket: `ws://65.2.145.32:${process.env.WEBSOCKET_PORT || 4001}`,
       status: "/api/status"
     },
     websocket: wsStatus,
@@ -44,14 +45,27 @@ app.get("/api/status", (req, res) => {
   });
 });
 
+// Add WebSocket upgrade endpoint for Yeastar compatibility
+app.get('/websocket', (req, res) => {
+  logger.websocket('🔄 HTTP WebSocket upgrade request received');
+  res.status(426).json({
+    error: 'Upgrade Required',
+    message: 'This endpoint requires WebSocket upgrade',
+    websocketUrl: `ws://65.2.145.32:${process.env.WEBSOCKET_PORT || 4001}`
+  });
+});
+
 app.use(errorMiddleware);
+
+// Create HTTP server for potential WebSocket upgrade
+const server = http.createServer(app);
 
 // Start WebSocket server for real-time audio
 const wsPort = process.env.WEBSOCKET_PORT || 4001;
 websocketService.start(wsPort);
 
 logger.info(`🚀 Starting Yeastar AI Voice Assistant`);
-logger.info(`📡 WebSocket Server: ws://localhost:${wsPort}`);
+logger.info(`📡 WebSocket Server: ws://65.2.145.32:${wsPort}`);
 logger.info(`🌐 HTTP Server will start on port ${process.env.PORT || 4000}`);
 
-module.exports = app;
+module.exports = { app, server };
