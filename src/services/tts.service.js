@@ -15,23 +15,19 @@ async function synthesizeSpeech(text, language = 'ur') {
       
       tts.save(tempFile, (err) => {
         if (err) {
-          console.error('TTS Error:', err);
           reject(new Error(`Text-to-speech failed: ${err.message}`));
         } else {
           try {
             const audioBuffer = fs.readFileSync(tempFile);
             fs.unlinkSync(tempFile); // Clean up temp file
-            console.log(`TTS Success: Generated ${audioBuffer.length} bytes`);
             resolve(audioBuffer);
           } catch (fileError) {
-            console.error('File operation error:', fileError);
             reject(new Error(`File processing failed: ${fileError.message}`));
           }
         }
       });
     });
   } catch (error) {
-    console.error('TTS Service Error:', error.message);
     throw error;
   }
 }

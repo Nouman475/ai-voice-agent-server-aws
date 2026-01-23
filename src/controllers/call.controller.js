@@ -58,15 +58,11 @@ exports.handleAudio = async (req, res) => {
       return res.status(400).json({ error: "Session ID required" });
     }
 
-    console.log(`Processing audio for session: ${sessionId}, size: ${audioBuffer.length} bytes`);
-
     // 1. Convert speech to text
     const userText = await sttService.transcribeAudio(audioBuffer);
-    console.log(`User said: ${userText}`);
 
     // 2. Get AI response
     const aiReply = await geminiService.generateReply(sessionId, userText);
-    console.log(`AI replied: ${aiReply}`);
 
     // 3. Convert AI text to speech
     const audioResponse = await ttsService.synthesizeSpeech(aiReply);
@@ -78,7 +74,6 @@ exports.handleAudio = async (req, res) => {
     });
     res.send(audioResponse);
   } catch (error) {
-    console.error("Audio processing error:", error.message);
     res.status(500).json({ 
       error: "Audio processing failed",
       details: error.message 

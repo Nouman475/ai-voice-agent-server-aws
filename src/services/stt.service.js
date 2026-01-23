@@ -22,7 +22,6 @@ async function transcribeAudio(audioBuffer) {
     
     if (!fs.existsSync(whisperPath)) {
       // Fallback to system whisper or use a simple mock for now
-      console.log('Whisper executable not found, using mock transcription');
       fs.unlinkSync(tempFilePath);
       return 'Hello, this is a mock transcription. Please install Whisper.cpp.';
     }
@@ -37,10 +36,8 @@ async function transcribeAudio(audioBuffer) {
       throw new Error('No speech detected in audio');
     }
     
-    console.log(`STT Result: ${transcript}`);
     return transcript.trim();
   } catch (error) {
-    console.error('STT Error:', error.message);
     throw new Error(`Speech recognition failed: ${error.message}`);
   }
 }

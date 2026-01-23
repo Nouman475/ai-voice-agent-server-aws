@@ -28,11 +28,8 @@ Assistant:`;
     });
 
     const response = result.response.text();
-    console.log(`AI Response for session ${sessionId}: ${response}`);
     return response;
   } catch (error) {
-    console.error('Gemini Service Error:', error.message);
-    
     // Return fallback responses based on input
     const fallbackResponses = {
       'Option 1': 'Thank you for selecting option 1. Our sales team will assist you shortly.',
