@@ -13,30 +13,27 @@ class YeastarWebSocketService {
   start(port = 4000) {
     this.wss = new WebSocket.Server({ port });
     
-    console.log(`🎧 WebSocket Audio Server running on ws://localhost:${port}`);
-    console.log(`📡 Yeastar should connect to: ws://192.168.33.102:${port}`);
+    console.log(`🎧 Voice WebSocket Server running on ws://localhost:${port}`);
     
     this.wss.on('connection', (ws, req) => {
-      console.log('🔗 Yeastar WebSocket connected from:', req.socket.remoteAddress);
-      console.log('📋 Connection headers:', req.headers);
+      console.log('🔗 Voice WebSocket connected');
       
       ws.on('message', async (data) => {
         try {
-          console.log('📨 Raw message received:', data.toString());
           await this.handleMessage(ws, data);
         } catch (error) {
-          console.error('WebSocket message error:', error);
+          console.error('Voice WebSocket error:', error);
           ws.send(JSON.stringify({ error: error.message }));
         }
       });
 
       ws.on('close', () => {
-        console.log('🔌 Yeastar WebSocket disconnected');
+        console.log('🔌 Voice WebSocket disconnected');
         this.cleanupConnection(ws);
       });
 
       ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.error('Voice WebSocket error:', error);
       });
       
       // Send connection confirmation
@@ -62,7 +59,7 @@ class YeastarWebSocketService {
         await this.handleCallEnd(ws, message);
         break;
       default:
-        console.log('Unknown message type:', message.type);
+        break;
     }
   }
 
@@ -78,7 +75,7 @@ class YeastarWebSocketService {
       to
     });
 
-    console.log(`📞 Call started: ${callId} (${from} → ${to})`);
+    console.log(`📞 Voice Call Started: ${callId}`);
     
     // Send welcome message
     const welcomeText = "آپ کا خیر مقدم ہے، میں آپ کی کیسے مدد کر سکتا ہوں؟";
@@ -96,7 +93,6 @@ class YeastarWebSocketService {
     const call = this.activeCalls.get(callId);
     
     if (!call) {
-      console.error('Call not found:', callId);
       return;
     }
 
@@ -115,15 +111,13 @@ class YeastarWebSocketService {
 
   async processAudio(call, callId) {
     try {
-      console.log(`🎤 Processing audio for call: ${callId}`);
-      
       // 1. Speech to Text
       const userText = await sttService.transcribeAudio(call.audioBuffer);
-      console.log(`User said: ${userText}`);
+      console.log(`🎤 Voice Transcription: ${userText}`);
 
       // 2. AI Response
       const aiReply = await geminiService.generateReply(call.sessionId, userText);
-      console.log(`AI replied: ${aiReply}`);
+      console.log(`🤖 Voice Response: ${aiReply}`);
 
       // 3. Text to Speech
       const audioResponse = await ttsService.synthesizeSpeech(aiReply, 'ur');
@@ -136,7 +130,7 @@ class YeastarWebSocketService {
       }));
 
     } catch (error) {
-      console.error('Audio processing error:', error);
+      console.error('Voice processing error:', error);
       
       // Send error response
       const errorText = "معذرت، میں آپ کو سمجھ نہیں سکا۔ براہ کرم دوبارہ کہیں۔";
@@ -152,7 +146,7 @@ class YeastarWebSocketService {
 
   async handleCallEnd(ws, message) {
     const { callId } = message;
-    console.log(`📞 Call ended: ${callId}`);
+    console.log(`📞 Voice Call Ended: ${callId}`);
     
     this.activeCalls.delete(callId);
   }
@@ -162,7 +156,7 @@ class YeastarWebSocketService {
     for (const [callId, call] of this.activeCalls.entries()) {
       if (call.ws === ws) {
         this.activeCalls.delete(callId);
-        console.log(`🧹 Cleaned up call: ${callId}`);
+
       }
     }
   }
