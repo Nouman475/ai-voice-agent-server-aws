@@ -16,10 +16,11 @@ class YeastarWebSocketService {
     console.log(`🎧 Voice WebSocket Server running on ws://localhost:${port}`);
     
     this.wss.on('connection', (ws, req) => {
-      console.log('🔗 Voice WebSocket connected');
+      console.log('🔗 Voice WebSocket Connected - Ready for realtime transcription');
       
       ws.on('message', async (data) => {
         try {
+          console.log('📡 Realtime WebSocket Data Received:', data.toString().substring(0, 100) + '...');
           await this.handleMessage(ws, data);
         } catch (error) {
           console.error('Voice WebSocket error:', error);
@@ -47,12 +48,14 @@ class YeastarWebSocketService {
   async handleMessage(ws, data) {
     // Parse Yeastar message
     const message = JSON.parse(data.toString());
+    console.log('📨 Realtime Message Type:', message.type);
     
     switch (message.type) {
       case 'call_start':
         await this.handleCallStart(ws, message);
         break;
       case 'audio_data':
+        console.log('🎵 Realtime Audio Data Received - Processing for transcription...');
         await this.handleAudioData(ws, message);
         break;
       case 'call_end':
@@ -99,11 +102,13 @@ class YeastarWebSocketService {
     // Accumulate audio data
     const audioChunk = Buffer.from(audio, 'base64');
     call.audioBuffer = Buffer.concat([call.audioBuffer, audioChunk]);
+    console.log(`🎤 Realtime Audio Buffer: ${call.audioBuffer.length} bytes accumulated`);
 
     // Process when we have enough audio (e.g., 3 seconds at 8kHz)
     const minAudioSize = 8000 * 2 * 3; // 3 seconds of 16-bit audio at 8kHz
     
     if (call.audioBuffer.length >= minAudioSize) {
+      console.log('⚡ Processing realtime audio chunk for transcription...');
       await this.processAudio(call, callId);
       call.audioBuffer = Buffer.alloc(0); // Reset buffer
     }
@@ -128,6 +133,8 @@ class YeastarWebSocketService {
         callId,
         audio: audioResponse.toString('base64')
       }));
+      
+      console.log('📤 Realtime Voice Response Sent to Yeastar');
 
     } catch (error) {
       console.error('Voice processing error:', error);

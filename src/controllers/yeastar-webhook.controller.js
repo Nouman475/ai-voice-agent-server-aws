@@ -29,8 +29,6 @@ exports.handleIncomingCall = async (req, res) => {
       calledNumber = req.body.called_number || req.body.call_to || req.body.to;
     }
 
-    console.log(`📞 Incoming call: ${callerid} → ${calledNumber} (Call ID: ${callid})`);
-
     if (callid) {
       // Check if session already exists
       const existingSession = sessionService.getSessionByCallId(callid);
@@ -38,30 +36,20 @@ exports.handleIncomingCall = async (req, res) => {
       if (!existingSession) {
         const sessionId = sessionService.createSession();
         sessionService.mapCallToSession(callid, sessionId);
-        console.log(`New call: ${callid} → Session: ${sessionId}`);
         
         // Check if call is to extension 208 (IVR) - Direct AI answer
         if (calledNumber === '208' || req.body.type === 'ivr_input') {
-          console.log(`🤖 Extension 208 IVR called - Starting AI conversation`);
-          
-          // Start AI conversation immediately for IVR
           try {
             const result = await ivrManager.processUserInput(sessionId, "IVR_CALL_START", callid);
-            console.log(`✅ AI ready for extension 208 IVR`);
           } catch (aiError) {
-            console.error("AI initialization failed:", aiError.message);
+            // Silent error handling
           }
         }
-      } else {
-        console.log(
-          `Call already exists: ${callid} → Session: ${existingSession}`,
-        );
       }
     }
 
     res.json({ status: "success" });
   } catch (error) {
-    console.error("Incoming call error:", error);
     res.status(500).json({ error: "Internal error" });
   }
 };
@@ -84,21 +72,17 @@ exports.handleCallEnd = async (req, res) => {
 
       if (sessionId) {
         sessionService.endSession(sessionId);
-        console.log(`Call ended: ${callid}`);
       }
     }
 
     res.json({ status: "success" });
   } catch (error) {
-    console.error("Call end error:", error);
     res.status(500).json({ error: "Internal error" });
   }
 };
 
 exports.handleDTMF = async (req, res) => {
   try {
-    console.log("🔥 DTMF WEBHOOK DATA:", req.body);
-
     // Parse Yeastar webhook format
     let callid, dtmf;
 
@@ -108,8 +92,6 @@ exports.handleDTMF = async (req, res) => {
       const msgData = JSON.parse(decodedMsg);
       callid = msgData.call_id;
       dtmf = msgData.info;
-
-      console.log("📞 Parsed DTMF:", { callid, dtmf, type: req.body.type });
     } else {
       callid = req.body.callid;
       dtmf = req.body.dtmf;
@@ -125,30 +107,21 @@ exports.handleDTMF = async (req, res) => {
       return res.status(404).json({ error: "Session not found" });
     }
 
-    console.log(`DTMF received: ${dtmf} for call ${callid}`);
-
     const userInput = dtmfMapping[dtmf] || dtmf;
 
-    // 🔥 ENABLE IVR PROCESSING
+    // Process DTMF silently
     try {
-      console.log(`🤖 Processing AI response for: ${userInput}`);
       const result = await ivrManager.processUserInput(
         sessionId,
         userInput,
         callid,
       );
-      console.log(`✅ AI Response: ${result.aiResponse}`);
-      console.log(`📞 Transferred to IVR: ${result.ivr}`);
     } catch (ivrError) {
-      console.error("IVR processing failed:", ivrError.message);
-      // Continue even if IVR fails
+      // Silent error handling
     }
-
-    console.log(`Processed DTMF: ${userInput}`);
 
     res.json({ status: "success", dtmf: userInput });
   } catch (error) {
-    console.error("DTMF handling error:", error);
     res.status(500).json({ error: "Internal error" });
   }
 };
@@ -161,12 +134,10 @@ exports.handleCallEnd = async (req, res) => {
 
     if (sessionId) {
       sessionService.endSession(sessionId);
-      console.log(`Call ended: ${callid}`);
     }
 
     res.json({ status: "success" });
   } catch (error) {
-    console.error("Call end error:", error);
     res.status(500).json({ error: "Internal error" });
   }
 };
