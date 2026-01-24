@@ -4,8 +4,8 @@
   "description": "AI Voice Assistant integrated with Yeastar PBX using Gemini Pro",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "nodemon src/server.js",
+    "start": "node api.js && node src/server.js",
+    "dev": "node api.js && nodemon src/server.js",
     "setup": "node src/utils/downloadModel.js"
   },
   "keywords": [
