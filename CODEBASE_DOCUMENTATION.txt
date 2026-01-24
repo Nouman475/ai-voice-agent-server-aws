@@ -1,0 +1,1024 @@
+# Yeastar AI Voice Assistant - Complete Codebase Documentation
+
+## Table of Contents
+1. [Project Overview](#project-overview)
+2. [Architecture](#architecture)
+3. [Project Structure](#project-structure)
+4. [Configuration](#configuration)
+5. [API Endpoints](#api-endpoints)
+6. [Services](#services)
+7. [Controllers](#controllers)
+8. [Middleware](#middleware)
+9. [Utilities](#utilities)
+10. [WebSocket Implementation](#websocket-implementation)
+11. [Integration Details](#integration-details)
+12. [Setup and Installation](#setup-and-installation)
+13. [Environment Variables](#environment-variables)
+14. [Dependencies](#dependencies)
+15. [Error Handling](#error-handling)
+16. [Logging](#logging)
+17. [Security Considerations](#security-considerations)
+18. [Performance Optimization](#performance-optimization)
+19. [Troubleshooting](#troubleshooting)
+
+## Project Overview
+
+The **Yeastar AI Voice Assistant** is a Node.js application that integrates AI-powered voice assistance with Yeastar PBX systems. It provides real-time voice processing capabilities using Google's Gemini AI, speech-to-text (STT), and text-to-speech (TTS) services.
+
+### Key Features
+- **Real-time Voice Processing**: WebSocket-based audio streaming
+- **AI-Powered Responses**: Google Gemini Pro integration
+- **Multi-language Support**: Urdu and English TTS/STT
+- **PBX Integration**: Direct integration with Yeastar PBX systems
+- **IVR Management**: Dynamic IVR prompt generation and management
+- **Session Management**: Call session tracking and management
+- **Audio Processing**: Whisper.cpp for speech recognition
+- **SFTP Integration**: Audio file upload to PBX systems
+
+### Technology Stack
+- **Runtime**: Node.js
+- **Framework**: Express.js
+- **AI Service**: Google Gemini Pro
+- **Speech Recognition**: Whisper.cpp
+- **Text-to-Speech**: Google TTS (gTTS)
+- **WebSocket**: ws library
+- **File Transfer**: SSH2 SFTP Client
+- **Audio Processing**: Buffer-based audio handling
+
+## Architecture
+
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Yeastar PBX   │◄──►│  Voice Assistant │◄──►│   Google AI     │
+│                 │    │                 │    │   Services      │
+│ • Call Routing  │    │ • WebSocket     │    │ • Gemini Pro    │
+│ • IVR System    │    │ • Audio Proc.   │    │ • TTS/STT       │
+│ • SFTP Server   │    │ • Session Mgmt  │    │                 │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
+
+### Data Flow
+1. **Incoming Call** → Yeastar PBX → Webhook → Voice Assistant
+2. **Audio Stream** → WebSocket → STT → AI Processing → TTS → Response
+3. **IVR Management** → Dynamic prompt generation → SFTP upload → PBX update
+
+## Project Structure
+
+```
+voice-assistant-yeastar/
+├── audio/                          # Generated audio files
+│   ├── .gitkeep
+│   └── ai_response_*.wav          # AI-generated audio responses
+├── bin/                           # Binary executables (Whisper)
+├── models/                        # AI models
+│   ├── .gitkeep
+│   └── ggml-base.bin             # Whisper base model
+├── node_modules/                  # Dependencies
+├── src/                          # Source code
+│   ├── app.js                    # Express application setup
+│   ├── server.js                 # Server entry point
+│   ├── config/                   # Configuration files
+│   │   ├── gemini.config.js      # Gemini AI configuration
+│   │   ├── stt.config.js         # Speech-to-text configuration
+│   │   ├── tts.config.js         # Text-to-speech configuration
+│   │   └── yeastar.config.js     # Yeastar PBX configuration
+│   ├── controllers/              # Request handlers
+│   │   ├── ai.controller.js      # AI processing controller
+│   │   ├── call.controller.js    # Call management controller
+│   │   └── yeastar-webhook.controller.js # Webhook handlers
+│   ├── middlewares/              # Express middleware
+│   │   ├── error.middleware.js   # Error handling
+│   │   └── validation.middleware.js # Request validation
+│   ├── routes/                   # API route definitions
+│   │   ├── call.routes.js        # Call-related endpoints
+│   │   └── yeastar.routes.js     # Yeastar webhook endpoints
+│   ├── services/                 # Business logic services
+│   │   ├── audio-upload.service.js    # SFTP audio upload
+│   │   ├── call-session.service.js    # Session management
+│   │   ├── gemini.service.js          # AI service integration
+│   │   ├── ivr-manager.service.js     # IVR management
+│   │   ├── quota-manager.service.js   # API quota management
+│   │   ├── stt.service.js             # Speech-to-text service
+│   │   ├── tts.service.js             # Text-to-speech service
+│   │   ├── websocket.service.js       # WebSocket server
+│   │   └── yeastar-api.service.js     # Yeastar API client
+│   └── utils/                    # Utility functions
+│       ├── downloadModel.js      # Model download utility
+│       ├── logger.js             # Logging utility
+│       ├── silenceDetector.js    # Audio silence detection
+│       └── tokenLimiter.js       # Token usage limiter
+├── temp/                         # Temporary files
+│   └── .gitkeep
+├── .env                          # Environment variables
+├── .gitignore                    # Git ignore rules
+└── package.json                  # Project dependencies and scripts
+```
+
+## Configuration
+
+### Gemini AI Configuration (`src/config/gemini.config.js`)
+```javascript
+module.exports = {
+  maxTokens: 150,        // Maximum tokens per response
+  temperature: 0.3       // Response creativity (0.0-1.0)
+};
+```
+
+### Speech-to-Text Configuration (`src/config/stt.config.js`)
+```javascript
+const whisperConfig = {
+  modelPath: process.env.WHISPER_MODEL_PATH || './models/ggml-base.bin',
+  language: process.env.WHISPER_LANGUAGE || 'auto',
+  wordTimestamps: process.env.WHISPER_WORD_TIMESTAMPS === 'true' || false
+};
+```
+
+### Yeastar PBX Configuration (`src/config/yeastar.config.js`)
+```javascript
+module.exports = {
+  pbxUrl: process.env.YEASTAR_PBX_URL,
+  apiUsername: process.env.YEASTAR_API_USER,
+  apiPassword: process.env.YEASTAR_API_PASSWORD,
+  apiSecret: process.env.YEASTAR_API_SECRET,
+  
+  baseIVR: '6500',                                    // Main IVR number
+  responseIVRs: ['6501', '6502', '6503', '6504', '6505'], // Available response IVRs
+  
+  promptPath: '/ysdisk/ysapps/pbxcenter/var/lib/asterisk/sounds/custom/',
+  sftpPort: 22,
+  sftpUser: 'support',
+  sftpPassword: process.env.YEASTAR_SFTP_PASSWORD,
+};
+```
+
+## API Endpoints
+
+### Call Management Endpoints (`/api/call`)
+
+#### POST `/api/call/start`
+**Purpose**: Initialize a new call session
+**Request Body**: None required
+**Response**:
+```json
+{
+  "sessionId": "uuid-string",
+  "message": "Hello, how can I help you today?"
+}
+```
+
+#### POST `/api/call/message`
+**Purpose**: Process text message from user
+**Request Body**:
+```json
+{
+  "sessionId": "uuid-string",
+  "text": "User message text"
+}
+```
+**Response**:
+```json
+{
+  "reply": "AI generated response"
+}
+```
+
+#### POST `/api/call/end`
+**Purpose**: End a call session
+**Request Body**:
+```json
+{
+  "sessionId": "uuid-string"
+}
+```
+**Response**:
+```json
+{
+  "message": "Call ended successfully"
+}
+```
+
+#### POST `/api/call/audio`
+**Purpose**: Process audio file from user
+**Request**: Multipart form data with audio file
+**Response**: Audio file (audio/mpeg)
+
+#### GET `/api/call/models`
+**Purpose**: List available AI models
+**Response**:
+```json
+{
+  "models": [
+    {
+      "name": "models/gemini-2.5-flash",
+      "supportedMethods": ["generateContent"]
+    }
+  ]
+}
+```
+
+### Yeastar Webhook Endpoints (`/api/yeastar`)
+
+#### POST `/api/yeastar/webhook/incoming`
+**Purpose**: Handle incoming call notifications from Yeastar
+**Request Body**: Yeastar webhook payload
+**Response**:
+```json
+{
+  "status": "success"
+}
+```
+
+#### POST `/api/yeastar/webhook/dtmf`
+**Purpose**: Handle DTMF (keypad) input from callers
+**Request Body**: Yeastar DTMF webhook payload
+**Response**:
+```json
+{
+  "status": "success",
+  "dtmf": "Option 1"
+}
+```
+
+#### POST `/api/yeastar/webhook/callend`
+**Purpose**: Handle call termination notifications
+**Request Body**: Yeastar call end webhook payload
+**Response**:
+```json
+{
+  "status": "success"
+}
+```
+
+### System Endpoints
+
+#### GET `/`
+**Purpose**: System status and information
+**Response**:
+```json
+{
+  "status": "✅ Yeastar AI Voice Assistant is live",
+  "version": "1.0.0",
+  "endpoints": {
+    "call": "/api/call",
+    "yeastar": "/api/yeastar",
+    "websocket": "ws://65.2.145.32:4001",
+    "status": "/api/status"
+  },
+  "websocket": {
+    "isRunning": true,
+    "activeConnections": 0,
+    "activeCalls": 0,
+    "port": 4001
+  },
+  "timestamp": "2025-01-24T..."
+}
+```
+
+#### GET `/api/status`
+**Purpose**: Detailed system status
+**Response**:
+```json
+{
+  "server": "Yeastar AI Voice Assistant",
+  "websocket": {
+    "isRunning": true,
+    "activeConnections": 0,
+    "activeCalls": 0,
+    "port": 4001
+  },
+  "environment": {
+    "port": 4000,
+    "websocketPort": 4001,
+    "nodeEnv": "development"
+  },
+  "timestamp": "2025-01-24T..."
+}
+```
+
+## Services
+
+### 1. Gemini Service (`src/services/gemini.service.js`)
+**Purpose**: Interface with Google Gemini AI for text generation
+
+**Key Methods**:
+- `generateReply(sessionId, text)`: Generate AI response to user input
+
+**Features**:
+- Fallback responses for API failures
+- Configurable token limits and temperature
+- Multi-language support
+- Professional phone assistant persona
+
+**Configuration**:
+```javascript
+const result = await model.generateContent({
+  contents: [{ role: "user", parts: [{ text: prompt }] }],
+  generationConfig: {
+    maxOutputTokens: Number(process.env.MAX_OUTPUT_TOKENS) || 100,
+    temperature: 0.7,
+    topP: 0.9,
+  },
+});
+```
+
+### 2. Call Session Service (`src/services/call-session.service.js`)
+**Purpose**: Manage call sessions and their lifecycle
+
+**Key Methods**:
+- `createSession()`: Create new session with UUID
+- `getSession(id)`: Retrieve session by ID
+- `endSession(id)`: Terminate session
+- `mapCallToSession(callId, sessionId)`: Map Yeastar call ID to session
+- `getSessionByCallId(callId)`: Get session by Yeastar call ID
+
+**Data Structure**:
+```javascript
+const session = {
+  id: "uuid-string",
+  turns: 0,
+  createdAt: Date.now()
+};
+```
+
+### 3. WebSocket Service (`src/services/websocket.service.js`)
+**Purpose**: Handle real-time audio communication with Yeastar PBX
+
+**Key Features**:
+- Real-time audio streaming
+- Connection management
+- Message type handling
+- Audio buffer management
+- Automatic cleanup
+
+**Supported Message Types**:
+- `call_start/start_call/call_begin`: Initialize call
+- `audio_data/audio/voice_data`: Process audio data
+- `call_end/end_call/call_hangup`: Terminate call
+- `ping`: Health check
+
+**Audio Processing Flow**:
+1. Receive base64 encoded audio chunks
+2. Accumulate audio in buffer
+3. Process when minimum size reached (3 seconds)
+4. STT → AI → TTS → Response
+
+### 4. Speech-to-Text Service (`src/services/stt.service.js`)
+**Purpose**: Convert audio to text using Whisper.cpp
+
+**Key Methods**:
+- `transcribeAudio(audioBuffer)`: Convert audio buffer to text
+
+**Features**:
+- Whisper.cpp integration
+- Temporary file management
+- Configurable language detection
+- Fallback mock responses
+
+**Process**:
+1. Write audio buffer to temporary file
+2. Execute Whisper binary with model
+3. Parse transcript from output
+4. Clean up temporary files
+
+### 5. Text-to-Speech Service (`src/services/tts.service.js`)
+**Purpose**: Convert text to speech using Google TTS
+
+**Key Methods**:
+- `synthesizeSpeech(text, language)`: Generate audio from text
+
+**Features**:
+- Multi-language support (Urdu, English)
+- Temporary file management
+- Buffer-based audio handling
+- Error handling with fallbacks
+
+### 6. IVR Manager Service (`src/services/ivr-manager.service.js`)
+**Purpose**: Manage Interactive Voice Response system
+
+**Key Methods**:
+- `processUserInput(sessionId, userInput, callId)`: Process user interactions
+- `getNextIVR()`: Get next available IVR number
+
+**Features**:
+- Dynamic IVR assignment
+- AI response generation
+- Audio file generation
+- Special handling for extension 208
+
+### 7. Yeastar API Service (`src/services/yeastar-api.service.js`)
+**Purpose**: Interface with Yeastar PBX API
+
+**Key Methods**:
+- `login()`: Authenticate with Yeastar API
+- `getToken()`: Get/refresh authentication token
+- `transferCallToIVR(callId, ivrNumber)`: Transfer call to IVR
+- `playAudioToCall(callId, audioFilename)`: Play audio during call
+- `updateIVRPrompt(ivrNumber, promptFilename)`: Update IVR prompts
+
+**Authentication**:
+- Token-based authentication
+- Automatic token refresh
+- Session management
+
+### 8. Audio Upload Service (`src/services/audio-upload.service.js`)
+**Purpose**: Upload audio files to Yeastar PBX via SFTP
+
+**Key Methods**:
+- `uploadAudioToYeastar(localFilePath, remoteFilename)`: Upload audio file
+
+**Features**:
+- SFTP connection management
+- Remote path configuration
+- Error handling and cleanup
+
+### 9. Quota Manager Service (`src/services/quota-manager.service.js`)
+**Purpose**: Manage API request quotas and rate limiting
+
+**Key Methods**:
+- `canMakeRequest(apiKey)`: Check if request is allowed
+- `recordRequest(apiKey)`: Record API request
+- `getRemainingRequests(apiKey)`: Get remaining quota
+- `getWaitTime()`: Get wait time if quota exceeded
+
+**Configuration**:
+- 15 requests per minute limit
+- 1-minute reset interval
+- Per-API-key tracking
+
+## Controllers
+
+### 1. Call Controller (`src/controllers/call.controller.js`)
+**Purpose**: Handle call-related HTTP requests
+
+**Methods**:
+- `startCall(req, res)`: Initialize new call session
+- `handleUserMessage(req, res, next)`: Process text messages
+- `endCall(req, res)`: Terminate call session
+- `handleAudio(req, res)`: Process audio uploads
+- `listModels(req, res)`: List available AI models
+
+**Features**:
+- Session validation
+- Turn limit enforcement
+- Audio processing pipeline
+- Error handling
+
+### 2. Yeastar Webhook Controller (`src/controllers/yeastar-webhook.controller.js`)
+**Purpose**: Handle webhooks from Yeastar PBX
+
+**Methods**:
+- `handleIncomingCall(req, res)`: Process incoming call notifications
+- `handleDTMF(req, res)`: Process DTMF keypad input
+- `handleCallEnd(req, res)`: Process call termination
+
+**Features**:
+- Webhook payload parsing
+- DTMF mapping to user-friendly text
+- Session lifecycle management
+- Silent error handling
+
+**DTMF Mapping**:
+```javascript
+const dtmfMapping = {
+  1: "Option 1", 2: "Option 2", 3: "Option 3",
+  4: "Option 4", 5: "Option 5", 9: "Main menu",
+  "*": "Repeat", "#": "Confirm"
+};
+```
+
+### 3. AI Controller (`src/controllers/ai.controller.js`)
+**Purpose**: Simple wrapper for AI service
+
+**Methods**:
+- `askGemini(userText)`: Generate AI response
+
+## Middleware
+
+### 1. Error Middleware (`src/middlewares/error.middleware.js`)
+**Purpose**: Global error handling for Express application
+
+**Features**:
+- Catches all unhandled errors
+- Logs error details
+- Returns standardized error response
+- Prevents application crashes
+
+### 2. Validation Middleware (`src/middlewares/validation.middleware.js`)
+**Purpose**: Validate incoming requests
+
+**Methods**:
+- `validateStartCall(req, res, next)`: Validate call start requests
+- `validateMessage(req, res, next)`: Validate message requests
+- `validateEndCall(req, res, next)`: Validate call end requests
+- `validateWebhook(req, res, next)`: Validate webhook requests
+
+**Validation Rules**:
+- Required fields presence
+- Data type validation
+- String length validation
+- Format validation
+
+## Utilities
+
+### 1. Logger (`src/utils/logger.js`)
+**Purpose**: Centralized logging system
+
+**Methods**:
+- `log(msg)`: General logging
+- `info(msg)`: Information logging
+- `error(msg, error)`: Error logging with details
+- `websocket(msg)`: WebSocket-specific logging
+- `yeastar(msg)`: Yeastar-specific logging
+
+**Features**:
+- Timestamp formatting
+- Categorized logging
+- Error detail capture
+- Consistent formatting
+
+### 2. Download Model (`src/utils/downloadModel.js`)
+**Purpose**: Download Whisper model for speech recognition
+
+**Features**:
+- Progress tracking
+- File existence checking
+- Error handling
+- Automatic cleanup on failure
+
+**Usage**:
+```bash
+npm run setup  # Downloads model automatically
+```
+
+### 3. Silence Detector (`src/utils/silenceDetector.js`)
+**Purpose**: Detect silence in audio streams
+
+**Methods**:
+- `isSilent(seconds)`: Check if duration indicates silence
+
+**Configuration**:
+- 8-second threshold for silence detection
+
+### 4. Token Limiter (`src/utils/tokenLimiter.js`)
+**Purpose**: Validate token usage limits
+
+**Methods**:
+- `isTokenSafe(tokens)`: Check if token count is within limits
+
+**Configuration**:
+- 1000 token safety limit
+
+## WebSocket Implementation
+
+### Connection Flow
+1. **Client Connection**: Yeastar PBX connects to WebSocket server
+2. **Authentication**: Connection validation and logging
+3. **Message Handling**: Process different message types
+4. **Audio Processing**: Real-time audio stream processing
+5. **Response Generation**: AI-powered response generation
+6. **Cleanup**: Connection and resource cleanup
+
+### Message Protocol
+```javascript
+// Call Start
+{
+  "type": "call_start",
+  "callId": "unique-call-id",
+  "from": "caller-number",
+  "to": "called-number"
+}
+
+// Audio Data
+{
+  "type": "audio_data",
+  "callId": "unique-call-id",
+  "audio": "base64-encoded-audio"
+}
+
+// Audio Response
+{
+  "type": "audio_response",
+  "callId": "unique-call-id",
+  "audio": "base64-encoded-response",
+  "timestamp": "2025-01-24T..."
+}
+
+// Call End
+{
+  "type": "call_end",
+  "callId": "unique-call-id"
+}
+```
+
+### Audio Processing Pipeline
+1. **Receive**: Base64 encoded audio chunks
+2. **Buffer**: Accumulate audio data
+3. **Threshold**: Process when minimum size reached
+4. **STT**: Convert speech to text
+5. **AI**: Generate intelligent response
+6. **TTS**: Convert response to speech
+7. **Send**: Return audio to caller
+
+## Integration Details
+
+### Yeastar PBX Integration
+- **Webhook Endpoints**: Receive call events
+- **API Integration**: Control call flow
+- **SFTP Upload**: Deploy audio files
+- **IVR Management**: Dynamic prompt updates
+
+### Google AI Integration
+- **Gemini Pro**: Text generation
+- **Cloud TTS**: Text-to-speech conversion
+- **Authentication**: API key-based
+- **Quota Management**: Rate limiting
+
+### Whisper.cpp Integration
+- **Local Processing**: On-device speech recognition
+- **Model Management**: Automatic model download
+- **Multi-language**: Automatic language detection
+- **Performance**: Optimized for real-time processing
+
+## Setup and Installation
+
+### Prerequisites
+- Node.js 16+ 
+- npm or yarn
+- Yeastar PBX system
+- Google Cloud API credentials
+- Whisper.cpp binary (optional)
+
+### Installation Steps
+1. **Clone Repository**:
+   ```bash
+   git clone <repository-url>
+   cd voice-assistant-yeastar
+   ```
+
+2. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Environment Setup**:
+   ```bash
+   cp .env.example .env
+   # Edit .env with your configuration
+   ```
+
+4. **Download Models**:
+   ```bash
+   npm run setup
+   ```
+
+5. **Start Application**:
+   ```bash
+   # Development
+   npm run dev
+   
+   # Production
+   npm start
+   ```
+
+### Directory Setup
+The application automatically creates required directories:
+- `audio/`: Generated audio files
+- `temp/`: Temporary processing files
+- `models/`: AI models storage
+
+## Environment Variables
+
+### Required Variables
+```bash
+# Server Configuration
+PORT=4000                          # HTTP server port
+WEBSOCKET_PORT=4001               # WebSocket server port
+
+# Google AI Configuration
+GEMINI_API_KEY=your-gemini-key    # Google Gemini API key
+GOOGLE_CLOUD_API_KEY=your-key     # Google Cloud API key
+
+# Yeastar PBX Configuration
+YEASTAR_PBX_URL=https://your-pbx-url
+YEASTAR_API_USER=your-username
+YEASTAR_API_PASSWORD=your-password
+YEASTAR_API_SECRET=your-secret
+YEASTAR_SFTP_PASSWORD=your-sftp-password
+
+# Call Configuration
+MAX_CALL_TURNS=10                 # Maximum conversation turns
+MAX_OUTPUT_TOKENS=200             # Maximum AI response tokens
+
+# Whisper Configuration
+WHISPER_MODEL_PATH=./models/ggml-base.bin
+WHISPER_LANGUAGE=auto             # Language detection
+WHISPER_WORD_TIMESTAMPS=false     # Word-level timestamps
+```
+
+### Optional Variables
+```bash
+NODE_ENV=development              # Environment mode
+LOG_LEVEL=info                    # Logging level
+```
+
+## Dependencies
+
+### Production Dependencies
+```json
+{
+  "@google/generative-ai": "^0.21.0",  // Google Gemini AI
+  "axios": "^1.13.2",                  // HTTP client
+  "dotenv": "^16.4.5",                 // Environment variables
+  "express": "^4.19.2",                // Web framework
+  "form-data": "^4.0.5",               // Form data handling
+  "gtts": "^0.2.1",                    // Google Text-to-Speech
+  "moment": "^2.30.1",                 // Date/time handling
+  "multer": "^2.0.2",                  // File upload handling
+  "ssh2-sftp-client": "^12.0.1",       // SFTP client
+  "uuid": "^9.0.1",                    // UUID generation
+  "ws": "^8.19.0"                      // WebSocket server
+}
+```
+
+### Development Dependencies
+```json
+{
+  "nodemon": "^3.0.3"                  // Development server
+}
+```
+
+### Key Dependencies Explained
+
+#### @google/generative-ai
+- **Purpose**: Interface with Google Gemini AI
+- **Usage**: Text generation and conversation
+- **Configuration**: API key authentication
+
+#### ws (WebSocket)
+- **Purpose**: Real-time communication
+- **Usage**: Audio streaming with Yeastar PBX
+- **Features**: Binary data support, connection management
+
+#### gtts (Google Text-to-Speech)
+- **Purpose**: Convert text to speech
+- **Usage**: Generate audio responses
+- **Languages**: Multi-language support
+
+#### ssh2-sftp-client
+- **Purpose**: File transfer to PBX
+- **Usage**: Upload generated audio files
+- **Features**: Secure file transfer
+
+#### multer
+- **Purpose**: Handle file uploads
+- **Usage**: Process audio files from HTTP requests
+- **Configuration**: Memory storage for audio processing
+
+## Error Handling
+
+### Global Error Handling
+```javascript
+// Error middleware catches all unhandled errors
+module.exports = (err, req, res, next) => {
+  console.error(err);
+  res.status(500).json({
+    error: 'Internal Server Error'
+  });
+};
+```
+
+### Service-Level Error Handling
+Each service implements specific error handling:
+
+#### Gemini Service
+- Fallback responses for API failures
+- Quota exceeded handling
+- Network error recovery
+
+#### WebSocket Service
+- Connection error handling
+- Message parsing errors
+- Audio processing failures
+
+#### STT Service
+- Model loading errors
+- Audio format validation
+- Transcription failures
+
+### Error Response Format
+```json
+{
+  "error": "Error description",
+  "details": "Detailed error message",
+  "timestamp": "2025-01-24T...",
+  "code": "ERROR_CODE"
+}
+```
+
+## Logging
+
+### Log Categories
+- **INFO**: General information
+- **ERROR**: Error conditions
+- **WEBSOCKET**: WebSocket events
+- **YEASTAR**: PBX-specific events
+
+### Log Format
+```
+[YYYY-MM-DD HH:mm:ss] [CATEGORY]: Message
+```
+
+### Log Examples
+```
+[2025-01-24 10:30:15] [INFO]: 🚀 Voice Assistant HTTP Server running on port 4000
+[2025-01-24 10:30:16] [WEBSOCKET]: 🎧 Voice WebSocket Server running on ws://0.0.0.0:4001
+[2025-01-24 10:30:20] [WEBSOCKET]: 🔗 NEW WebSocket Connection from IP: 192.168.1.100
+[2025-01-24 10:30:25] [YEASTAR]: 📞 Call Started - ID: call-123, From: 1001, To: 208
+```
+
+## Security Considerations
+
+### API Security
+- **Environment Variables**: Sensitive data in .env files
+- **Token Management**: Automatic token refresh
+- **Input Validation**: Request validation middleware
+- **Error Sanitization**: No sensitive data in error responses
+
+### Network Security
+- **HTTPS**: Secure communication with external APIs
+- **WebSocket Security**: Connection validation
+- **SFTP**: Secure file transfer
+- **IP Binding**: Configurable network interfaces
+
+### Data Security
+- **Temporary Files**: Automatic cleanup
+- **Audio Data**: Memory-based processing
+- **Session Management**: UUID-based sessions
+- **Quota Management**: Rate limiting
+
+### Recommendations
+1. **Use HTTPS**: Enable SSL/TLS for production
+2. **Firewall Rules**: Restrict access to necessary ports
+3. **API Keys**: Rotate keys regularly
+4. **Monitoring**: Implement security monitoring
+5. **Updates**: Keep dependencies updated
+
+## Performance Optimization
+
+### Audio Processing
+- **Buffer Management**: Efficient memory usage
+- **Streaming**: Real-time audio processing
+- **Cleanup**: Automatic resource cleanup
+- **Compression**: Optimized audio formats
+
+### AI Processing
+- **Token Limits**: Configurable response length
+- **Caching**: Session-based context
+- **Fallbacks**: Quick error responses
+- **Quota Management**: Rate limiting
+
+### WebSocket Optimization
+- **Connection Pooling**: Efficient connection management
+- **Message Batching**: Optimized data transfer
+- **Heartbeat**: Connection health monitoring
+- **Cleanup**: Automatic resource cleanup
+
+### Memory Management
+- **Buffer Limits**: Configurable buffer sizes
+- **Garbage Collection**: Automatic cleanup
+- **Session Cleanup**: Automatic session termination
+- **File Cleanup**: Temporary file removal
+
+## Troubleshooting
+
+### Common Issues
+
+#### 1. WebSocket Connection Issues
+**Symptoms**: Connection failures, timeouts
+**Solutions**:
+- Check firewall settings
+- Verify port availability
+- Check network connectivity
+- Review WebSocket logs
+
+#### 2. Audio Processing Failures
+**Symptoms**: No audio response, processing errors
+**Solutions**:
+- Verify Whisper model exists
+- Check audio format compatibility
+- Review STT/TTS service logs
+- Validate audio file sizes
+
+#### 3. AI Response Issues
+**Symptoms**: No AI responses, quota errors
+**Solutions**:
+- Verify API keys
+- Check quota limits
+- Review network connectivity
+- Check fallback responses
+
+#### 4. Yeastar Integration Issues
+**Symptoms**: Webhook failures, API errors
+**Solutions**:
+- Verify PBX configuration
+- Check API credentials
+- Review webhook endpoints
+- Validate SFTP settings
+
+### Debugging Steps
+
+#### 1. Check Logs
+```bash
+# View application logs
+npm start
+
+# Check WebSocket connections
+# Look for WEBSOCKET category logs
+
+# Check API responses
+# Look for ERROR category logs
+```
+
+#### 2. Test Endpoints
+```bash
+# Test system status
+curl http://localhost:4000/api/status
+
+# Test WebSocket connection
+# Use WebSocket client tools
+
+# Test call endpoints
+curl -X POST http://localhost:4000/api/call/start
+```
+
+#### 3. Verify Configuration
+```bash
+# Check environment variables
+cat .env
+
+# Verify model files
+ls -la models/
+
+# Check audio directory
+ls -la audio/
+```
+
+#### 4. Network Diagnostics
+```bash
+# Check port availability
+netstat -an | grep 4000
+netstat -an | grep 4001
+
+# Test external connectivity
+curl -I https://generativelanguage.googleapis.com
+```
+
+### Performance Monitoring
+
+#### Key Metrics
+- **Response Time**: API endpoint response times
+- **WebSocket Connections**: Active connection count
+- **Memory Usage**: Application memory consumption
+- **Audio Processing Time**: STT/TTS processing duration
+- **Error Rate**: Failed request percentage
+
+#### Monitoring Commands
+```bash
+# Check memory usage
+ps aux | grep node
+
+# Monitor network connections
+netstat -an | grep :4000
+
+# Check disk usage
+df -h
+
+# Monitor logs
+tail -f application.log
+```
+
+### Support and Maintenance
+
+#### Regular Maintenance
+1. **Log Rotation**: Implement log rotation
+2. **Model Updates**: Update AI models regularly
+3. **Dependency Updates**: Keep packages updated
+4. **Security Patches**: Apply security updates
+5. **Performance Monitoring**: Monitor system metrics
+
+#### Backup Procedures
+1. **Configuration Backup**: Backup .env and config files
+2. **Model Backup**: Backup AI models
+3. **Audio Archive**: Archive generated audio files
+4. **Database Backup**: If using persistent storage
+
+#### Scaling Considerations
+1. **Horizontal Scaling**: Multiple server instances
+2. **Load Balancing**: Distribute traffic
+3. **Database Scaling**: If adding persistent storage
+4. **CDN Integration**: For audio file delivery
+5. **Caching**: Implement response caching
+
+---
+
+This documentation provides a comprehensive overview of the Yeastar AI Voice Assistant codebase. For specific implementation details, refer to the individual source files and their inline comments.
